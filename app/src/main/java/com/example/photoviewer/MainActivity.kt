@@ -11,6 +11,7 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -56,13 +57,49 @@ class MainActivity : AppCompatActivity() {
 
         exifToolManager = ExifToolManager(this)
 
-        // 初始化 3 列网格 RecyclerView
+        // 1. 初始化 3 列网格适配器
         binding.rvThumbnails.layoutManager = GridLayoutManager(this, 3)
-        binding.rvThumbnails.adapter = ThumbnailAdapter(photoPaths, selectedPaths, exifToolManager) {
-            updateSelectionUI()
+        binding.rvThumbnails.adapter = ThumbnailAdapter(
+            photos = photoPaths,
+            selectedPaths = selectedPaths,
+            exifToolManager = exifToolManager,
+            onSelectionChanged = { updateSelectionUI() },
+            onPhotoClick = { position -> openDetailPreview(position) }
+        )
+
+        // 2. 初始化大图模式下的 ViewPager2 适配器
+        binding.viewPagerDetail.adapter = PhotoAdapter(photoPaths, exifToolManager)
+
+        // 3. 大图模式下的旋转按钮
+        binding.btnRotateSingle.setOnClickListener {
+            val currentPos = binding.viewPagerDetail.currentItem
+            val path = photoPaths.getOrNull(currentPos) ?: return@setOnClickListener
+            exifToolManager.queueRotation(path)
+            
+            // 刷新大图与网格
+            binding.viewPagerDetail.adapter?.notifyItemChanged(currentPos)
+            binding.rvThumbnails.adapter?.notifyItemChanged(currentPos)
+            binding.btnApply.text = "写入保存 EXIF (${exifToolManager.rotationQueue.size})"
         }
 
-        // 全选逻辑绑定
+        // 4. 返回网格视图按钮
+        binding.btnBackToGrid.setOnClickListener {
+            closeDetailPreview()
+        }
+
+        // 5. 监听手机系统返回键：如果在看大图，返回键先退回网格
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (binding.layoutDetailContainer.visibility == View.VISIBLE) {
+                    closeDetailPreview()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
+
+        // 全选复选框逻辑
         binding.cbSelectAll.setOnCheckedChangeListener { _, isChecked ->
             if (isUpdatingSelectAllCheckbox) return@setOnCheckedChangeListener
             
@@ -74,7 +111,7 @@ class MainActivity : AppCompatActivity() {
             updateSelectionUI()
         }
 
-        // 点击“旋转选中照片”
+        // 旋转选中照片按钮
         binding.btnRotate.setOnClickListener {
             if (selectedPaths.isEmpty()) {
                 Toast.makeText(this, "请先勾选需要旋转的照片", Toast.LENGTH_SHORT).show()
@@ -90,7 +127,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "已为 ${selectedPaths.size} 张照片添加旋转指令", Toast.LENGTH_SHORT).show()
         }
 
-        // 点击“写入保存 EXIF”
+        // 保存写入 EXIF 按钮
         binding.btnApply.setOnClickListener {
             if (exifToolManager.rotationQueue.isEmpty()) {
                 Toast.makeText(this, "当前没有待保存的旋转修改", Toast.LENGTH_SHORT).show()
@@ -114,6 +151,16 @@ class MainActivity : AppCompatActivity() {
         checkAndRequestPermissions()
     }
 
+    private fun openDetailPreview(position: Int) {
+        binding.layoutDetailContainer.visibility = View.VISIBLE
+        binding.viewPagerDetail.setCurrentItem(position, false)
+    }
+
+    private fun closeDetailPreview() {
+        binding.layoutDetailContainer.visibility = View.GONE
+        binding.rvThumbnails.adapter?.notifyDataSetChanged()
+    }
+
     private fun updateSelectionUI() {
         binding.tvSelectedCount.text = "已选中 ${selectedPaths.size} / ${photoPaths.size} 张"
 
@@ -133,6 +180,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     binding.btnApply.text = "写入保存 EXIF (${exifToolManager.rotationQueue.size})"
                     binding.rvThumbnails.adapter?.notifyDataSetChanged()
+                    binding.viewPagerDetail.adapter?.notifyDataSetChanged()
 
                     if (fail == 0) {
                         Toast.makeText(this, "成功将 EXIF 标头写入 $success 张图片！", Toast.LENGTH_SHORT).show()
@@ -252,6 +300,7 @@ class MainActivity : AppCompatActivity() {
                 albumMap[selectedAlbum]?.let { photoPaths.addAll(it) }
                 
                 binding.rvThumbnails.adapter?.notifyDataSetChanged()
+                binding.viewPagerDetail.adapter?.notifyDataSetChanged()
                 updateSelectionUI()
             }
 

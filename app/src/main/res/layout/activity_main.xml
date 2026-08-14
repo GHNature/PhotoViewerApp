@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- 相册选择下拉框 -->
+    <!-- 1. 相册选择下拉框 -->
     <Spinner
         android:id="@+id/spinnerAlbums"
         android:layout_width="0dp"
@@ -13,7 +13,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- 全选与选中计数控制栏 -->
+    <!-- 2. 全选与选中计数控制栏 -->
     <LinearLayout
         android:id="@+id/layoutControlHeader"
         android:layout_width="match_parent"
@@ -41,7 +41,7 @@
             android:textColor="#666666" />
     </LinearLayout>
 
-    <!-- 照片缩略图网格视图 -->
+    <!-- 3. 照片缩略图网格视图 -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvThumbnails"
         android:layout_width="0dp"
@@ -52,7 +52,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- 底部批量控制按钮栏 -->
+    <!-- 4. 底部批量控制按钮栏 -->
     <LinearLayout
         android:id="@+id/layoutBottomButtons"
         android:layout_width="match_parent"
@@ -77,5 +77,44 @@
             android:layout_marginStart="4dp"
             android:text="写入保存 EXIF (0)" />
     </LinearLayout>
+
+    <!-- 5. 全屏大图浏览界面（默认隐藏，点击缩略图时展开） -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/layoutDetailContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FF000000"
+        android:visibility="gone"
+        android:elevation="10dp">
+
+        <Button
+            android:id="@+id/btnBackToGrid"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="12dp"
+            android:text="← 返回网格"
+            android:backgroundTint="#80000000"
+            android:textColor="#FFFFFF"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/viewPagerDetail"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintTop_toBottomOf="@id/btnBackToGrid"
+            app:layout_constraintBottom_toTopOf="@id/btnRotateSingle"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <Button
+            android:id="@+id/btnRotateSingle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:text="旋转当前照片"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

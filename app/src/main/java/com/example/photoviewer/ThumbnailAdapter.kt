@@ -11,7 +11,8 @@ class ThumbnailAdapter(
     private val photos: List<String>,
     private val selectedPaths: MutableSet<String>,
     private val exifToolManager: ExifToolManager,
-    private val onSelectionChanged: () -> Unit
+    private val onSelectionChanged: () -> Unit,
+    private val onPhotoClick: (position: Int) -> Unit
 ) : RecyclerView.Adapter<ThumbnailAdapter.VH>() {
 
     class VH(val binding: ItemThumbnailBinding) : RecyclerView.ViewHolder(binding.root)
@@ -24,28 +25,32 @@ class ThumbnailAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val path = photos[position]
 
-        // 1. 读取当前排队的旋转角度，进行实时预览
+        // 1. 读取当前排队的旋转角度，实时预览
         val currentPendingRotation = exifToolManager.rotationQueue[path] ?: 0
         holder.binding.ivThumbnail.rotation = currentPendingRotation.toFloat()
 
-        // 2. 使用 Coil 加载缩略图
+        // 2. 加载缩略图
         holder.binding.ivThumbnail.load(File(path)) {
             crossfade(true)
         }
 
-        // 3. 勾选框状态更新
-        val isSelected = selectedPaths.contains(path)
-        holder.binding.cbSelect.isChecked = isSelected
+        // 3. 绑定勾选框状态
+        holder.binding.cbSelect.setOnCheckedChangeListener(null)
+        holder.binding.cbSelect.isChecked = selectedPaths.contains(path)
 
-        // 4. 点击图片卡片切换选中状态
-        holder.itemView.setOnClickListener {
+        // 4. 【仅点击勾选框】切换选中状态
+        holder.binding.cbSelect.setOnClickListener {
             if (selectedPaths.contains(path)) {
                 selectedPaths.remove(path)
             } else {
                 selectedPaths.add(path)
             }
-            notifyItemChanged(position)
             onSelectionChanged()
+        }
+
+        // 5. 【点击图片本身】进入单张全屏浏览
+        holder.binding.ivThumbnail.setOnClickListener {
+            onPhotoClick(position)
         }
     }
 
