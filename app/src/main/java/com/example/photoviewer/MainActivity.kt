@@ -14,16 +14,19 @@ import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.GridLayoutManager
 import com.example.photoviewer.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var exifToolManager: ExifToolManager
+    
     private val photoPaths = mutableListOf<String>()
-
-    // 相册分类映射：KEY 为相册名称，VALUE 为该相册下的图片路径列表
+    private val selectedPaths = mutableSetOf<String>()
     private val albumMap = LinkedHashMap<String, MutableList<String>>()
+
+    private var isUpdatingSelectAllCheckbox = false
 
     private val requestPermission = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -52,17 +55,47 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         exifToolManager = ExifToolManager(this)
-        binding.viewPager.adapter = PhotoAdapter(photoPaths, exifToolManager)
 
-        binding.btnRotate.setOnClickListener {
-            val currentPath = photoPaths.getOrNull(binding.viewPager.currentItem) ?: return@setOnClickListener
-            exifToolManager.queueRotation(currentPath)
-            binding.viewPager.adapter?.notifyItemChanged(binding.viewPager.currentItem)
-            binding.btnApply.text = "应用旋转 (${exifToolManager.rotationQueue.size})"
+        // 初始化 3 列网格 RecyclerView
+        binding.rvThumbnails.layoutManager = GridLayoutManager(this, 3)
+        binding.rvThumbnails.adapter = ThumbnailAdapter(photoPaths, selectedPaths, exifToolManager) {
+            updateSelectionUI()
         }
 
+        // 全选逻辑绑定
+        binding.cbSelectAll.setOnCheckedChangeListener { _, isChecked ->
+            if (isUpdatingSelectAllCheckbox) return@setOnCheckedChangeListener
+            
+            selectedPaths.clear()
+            if (isChecked) {
+                selectedPaths.addAll(photoPaths)
+            }
+            binding.rvThumbnails.adapter?.notifyDataSetChanged()
+            updateSelectionUI()
+        }
+
+        // 点击“旋转选中照片”
+        binding.btnRotate.setOnClickListener {
+            if (selectedPaths.isEmpty()) {
+                Toast.makeText(this, "请先勾选需要旋转的照片", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            for (path in selectedPaths) {
+                exifToolManager.queueRotation(path)
+            }
+
+            binding.rvThumbnails.adapter?.notifyDataSetChanged()
+            binding.btnApply.text = "写入保存 EXIF (${exifToolManager.rotationQueue.size})"
+            Toast.makeText(this, "已为 ${selectedPaths.size} 张照片添加旋转指令", Toast.LENGTH_SHORT).show()
+        }
+
+        // 点击“写入保存 EXIF”
         binding.btnApply.setOnClickListener {
-            if (exifToolManager.rotationQueue.isEmpty()) return@setOnClickListener
+            if (exifToolManager.rotationQueue.isEmpty()) {
+                Toast.makeText(this, "当前没有待保存的旋转修改", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val urisToModify = exifToolManager.getPendingUris()
@@ -81,6 +114,14 @@ class MainActivity : AppCompatActivity() {
         checkAndRequestPermissions()
     }
 
+    private fun updateSelectionUI() {
+        binding.tvSelectedCount.text = "已选中 ${selectedPaths.size} / ${photoPaths.size} 张"
+
+        isUpdatingSelectAllCheckbox = true
+        binding.cbSelectAll.isChecked = photoPaths.isNotEmpty() && selectedPaths.size == photoPaths.size
+        isUpdatingSelectAllCheckbox = false
+    }
+
     private fun startBatchExifProcess() {
         exifToolManager.applyBatchRotations(
             onProgress = { completed, total ->
@@ -90,8 +131,8 @@ class MainActivity : AppCompatActivity() {
             },
             onComplete = { success, fail ->
                 runOnUiThread {
-                    binding.btnApply.text = "应用旋转 (${exifToolManager.rotationQueue.size})"
-                    binding.viewPager.adapter?.notifyDataSetChanged()
+                    binding.btnApply.text = "写入保存 EXIF (${exifToolManager.rotationQueue.size})"
+                    binding.rvThumbnails.adapter?.notifyDataSetChanged()
 
                     if (fail == 0) {
                         Toast.makeText(this, "成功将 EXIF 标头写入 $success 张图片！", Toast.LENGTH_SHORT).show()
@@ -125,7 +166,6 @@ class MainActivity : AppCompatActivity() {
         requestPermission.launch(permissionsToRequest)
     }
 
-    // 解析系统相册或其他 App 分享过来的图片路径
     private fun handleSharedImages(): List<String> {
         val sharedPaths = mutableListOf<String>()
         val uris = when (intent?.action) {
@@ -158,13 +198,11 @@ class MainActivity : AppCompatActivity() {
     private fun loadAlbumsAndPhotos() {
         albumMap.clear()
 
-        // 1. 处理分享进来的照片
         val sharedPhotos = handleSharedImages()
         if (sharedPhotos.isNotEmpty()) {
             albumMap["分享的照片"] = sharedPhotos.toMutableList()
         }
 
-        // 2. 加载全部照片
         val allPhotosList = mutableListOf<String>()
         albumMap["全部照片"] = allPhotosList
 
@@ -203,22 +241,23 @@ class MainActivity : AppCompatActivity() {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerAlbums.adapter = adapter
 
-        // 如果是通过“分享”唤起的，默认选中“分享的照片”，否则默认选中“全部照片”
         val defaultPosition = if (sharedPhotos.isNotEmpty()) albumNames.indexOf("分享的照片") else 0
 
         binding.spinnerAlbums.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selectedAlbum = albumNames[position]
                 photoPaths.clear()
+                selectedPaths.clear()
+                
                 albumMap[selectedAlbum]?.let { photoPaths.addAll(it) }
-                binding.viewPager.adapter?.notifyDataSetChanged()
-                binding.viewPager.setCurrentItem(0, false)
+                
+                binding.rvThumbnails.adapter?.notifyDataSetChanged()
+                updateSelectionUI()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
-        // 触发默认选择
         if (defaultPosition >= 0) {
             binding.spinnerAlbums.setSelection(defaultPosition)
         }

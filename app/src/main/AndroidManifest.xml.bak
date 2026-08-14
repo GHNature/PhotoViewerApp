@@ -7,7 +7,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="照片旋转"
+        android:label="照片浏览器"
         android:supportsRtl="true"
         android:theme="@style/Theme.PhotoViewer">
         
