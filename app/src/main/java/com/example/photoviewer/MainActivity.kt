@@ -2,6 +2,8 @@ package com.example.photoviewer
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -123,9 +125,46 @@ class MainActivity : AppCompatActivity() {
         requestPermission.launch(permissionsToRequest)
     }
 
+    // 解析系统相册或其他 App 分享过来的图片路径
+    private fun handleSharedImages(): List<String> {
+        val sharedPaths = mutableListOf<String>()
+        val uris = when (intent?.action) {
+            Intent.ACTION_SEND -> {
+                val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                if (uri != null) listOf(uri) else emptyList()
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
+            }
+            else -> emptyList()
+        }
+
+        for (uri in uris) {
+            contentResolver.query(uri, arrayOf(MediaStore.Images.Media.DATA), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val pathIndex = cursor.getColumnIndex(MediaStore.Images.Media.DATA)
+                    if (pathIndex != -1) {
+                        val path = cursor.getString(pathIndex)
+                        if (!path.isNullOrEmpty()) {
+                            sharedPaths.add(path)
+                        }
+                    }
+                }
+            }
+        }
+        return sharedPaths
+    }
+
     private fun loadAlbumsAndPhotos() {
         albumMap.clear()
 
+        // 1. 处理分享进来的照片
+        val sharedPhotos = handleSharedImages()
+        if (sharedPhotos.isNotEmpty()) {
+            albumMap["分享的照片"] = sharedPhotos.toMutableList()
+        }
+
+        // 2. 加载全部照片
         val allPhotosList = mutableListOf<String>()
         albumMap["全部照片"] = allPhotosList
 
@@ -164,6 +203,9 @@ class MainActivity : AppCompatActivity() {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerAlbums.adapter = adapter
 
+        // 如果是通过“分享”唤起的，默认选中“分享的照片”，否则默认选中“全部照片”
+        val defaultPosition = if (sharedPhotos.isNotEmpty()) albumNames.indexOf("分享的照片") else 0
+
         binding.spinnerAlbums.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selectedAlbum = albumNames[position]
@@ -174,6 +216,11 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        // 触发默认选择
+        if (defaultPosition >= 0) {
+            binding.spinnerAlbums.setSelection(defaultPosition)
         }
     }
 }
